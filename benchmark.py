@@ -160,7 +160,19 @@ class CLTempo(CLDatabase):
     def select_range(self, first, last):
         # time format ISO 8601
         self._client.read_data(self.SERIES_KEY, first, last)
-    
+
+
+class StopWatch(object):
+    _start = 0
+    _elapsed = 0
+    def start(self):
+        self._start = time.time()
+    def stop(self):
+        self._elapsed = time.time() - self._start
+    def display(self):
+        return self._elapsed
+# we aren't using this class
+# we are using the python timeit module
 
 ########################
 ####  TESTING CODE  ####
@@ -179,6 +191,21 @@ for i in range(100):
 sqlite = CLSQLite()
 sqlite.insert_range(points)
 
+
+cmdArray = []
+# classDefName
+cmdArray.append("CLSQLite")
+cmdArray.append("CLTempo")
+cmdArray.append("CLInflux")
+
+for theCmd in cmdArray:
+    setupStr = "from __main__ import " + theCmd + "; dbObj = " + theCmd + "()"
+    selStr = "dbObj.select_last()"
+    timeElapsed = timeit.timeit(selStr, setupStr, number=1)
+    print ("elapsed:: " + theCmd + " :: " + str(timeElapsed))
+
+    
+"""
 influx = CLInflux()
 #influx.insert_range(points)
 
@@ -197,5 +224,4 @@ tic = time.time()
 tempo.select_range(start, end)
 toc = time.time()
 print(toc-tic)
-
-
+"""
