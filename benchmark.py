@@ -167,50 +167,81 @@ class CL_Tempo(CL_Database):
     def select_range(self, start, end):
         ## convert from timestamp to ISO 8601
         start = datetime.datetime.utcfromtimestamp(start)
-        #start = date1.isoformat() + 'Z'
         end = datetime.datetime.utcfromtimestamp(end)
-        #end = date2.isoformat() + 'Z'
         self._client.read_data(self.SERIES_KEY, start, end)
 
 ########################
 ####  TESTING CODE  ####
 ########################
         
-points = []
-i=0
-theDate = datetime.datetime(2014,1, 1)
-for i in range(100):
-    timestamp = (theDate - datetime.datetime(1970, 1, 1)).total_seconds()
-    points.append(Point(timestamp, random.randint(1,100)))
-    theDate = theDate + datetime.timedelta(minutes=5)
+week = [[], []]
+month = [[], []]
+year = [[], []]
+calendar_units = [week, month, year]
+for i in calendar_units:
+    yyyy = 2014
+    mm = 1
+    dd = 1
+    date1 = date2 = datetime.datetime(yyyy, mm, dd)
+    if i == week:
+        dd = dd + 7
+    elif i == month:
+        if mm != 12:
+            mm = mm + 1
+        else:
+            mm = 1
+            yyyy = yyyy + 1
+    else:
+        yyyy = yyyy + 1
+    next_date = datetime.datetime(yyyy, mm, dd)
+    
+    while date1 < next_date:
+        timestamp = (date1 - datetime.datetime(1970, 1, 1)).total_seconds()
+        i[0].append(Point(timestamp, random.randint(1,100)))
+        date1 = date1 + datetime.timedelta(minutes=5)
+        
+    while date2 < next_date:
+        timestamp = (date2 - datetime.datetime(1970, 1, 1)).total_seconds()
+        i[1].append(Point(timestamp, random.randint(1,100)))
+        date2 = date2 + datetime.timedelta(minutes=60)
 
+# now we have 6 lists:
+#   week/month/year + 5min/1hr
+
+list_of_data = [week[0], week[1], month[0], month[1], year[0], year[1]]
 start = 1388535600
 end = 1388537100
 databases = ['CL_SQLite', 'CL_Influx', 'CL_Tempo']
 for db in databases:
-    db_name = db
+    for data in list_of_data:   
+        db_name = db
 
-    setup_str = "from __main__ import " + db_name + ", points, start, end; dbObj = " + db_name + "()"
+        setup_str = "from __main__ import "+db_name+", data, start, end; dbObj = "+db_name+"()"
 
-    sel_str = "dbObj.insert_range(points)"
-    insert_time = timeit.timeit(sel_str, setup_str, number=1)
+        sel_str = "dbObj.insert_range(data)"
+        insert_time = timeit.timeit(sel_str, setup_str, number=1)
+    
+        sel_str = "dbObj.select_first()"
+        sel_first_time = timeit.timeit(sel_str, setup_str, number=1)
+    
+        sel_str = "dbObj.select_last()"
+        sel_last_time = timeit.timeit(sel_str, setup_str, number=1)
 
-    sel_str = "dbObj.select_first()"
-    sel_first_time = timeit.timeit(sel_str, setup_str, number=1)
+        sel_str = "dbObj.select_range(start, end)"
+        sel_range_time = timeit.timeit(sel_str, setup_str, number=1)
 
-    sel_str = "dbObj.select_last()"
-    sel_last_time = timeit.timeit(sel_str, setup_str, number=1)
+        results = OrderedDict()
+        results['db_name'] = 'CL_SQLite'
+        results['insert_time'] = insert_time
+        results['sel_first_time'] = sel_first_time
+        results['sel_last_time'] = sel_last_time
+        results['sel_range_time'] = sel_range_time
 
-    sel_str = "dbObj.select_range(start, end)"
-    sel_range_time = timeit.timeit(sel_str, setup_str, number=1)
-
-    results = OrderedDict()
-    results['db_name'] = 'CL_SQLite'
-    results['insert_time'] = insert_time
-    results['sel_first_time'] = sel_first_time
-    results['sel_last_time'] = sel_last_time
-    results['sel_range_time'] = sel_range_time
-
-    print("Results Object: "+db_name+"\n")
-    print(results)
-    print("\n\n")
+        print("Results Object: "+db_name+"\n")
+        print(results)
+        print("\n\n")
+    print("--------------------------------------")
+    print("\n")
+    
+# with tempo trial you are limited by the number of points you can insert
+# at one time.  it's between 8,760 and 105,120.
