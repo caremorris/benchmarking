@@ -23,6 +23,8 @@ from tempodb.protocol import DataPoint
 
 import timeit
 
+from collections import OrderedDict
+
 class Point:
     time = 0
     value = 0.
@@ -30,7 +32,7 @@ class Point:
         self.time = t
         self.value = v
 
-class CLDatabase(object):
+class CL_Database(object):
     name = ""
     def __init__(self):
         print("I'm a new db!")
@@ -41,10 +43,10 @@ class CLDatabase(object):
         print("first")
     def select_last(self):
         print("last")
-    def select_range(self, first, last):
+    def select_range(self, start, end):
         print("not implemented")
         
-class CLSQLite(CLDatabase):
+class CL_SQLite(CL_Database):
     def __init__(self):
         conn = ''
         c = ''
@@ -78,17 +80,17 @@ class CLSQLite(CLDatabase):
         conn.commit()
         conn.close()
 
-    def select_range(self, first, last):
+    def select_range(self, start, end):
         conn = sqlite3.connect("grapes.db")
         c = conn.cursor()
-        c.execute('SELECT * FROM points WHERE time > ' + first + ' and time < ' + last)
+        start=str(start)
+        end=str(end)
+        c.execute('SELECT * FROM points WHERE time > '+start+' and time < '+end)
 
         conn.commit()
         conn.close()
 
-class CLInflux(CLDatabase):
-    # ordered desc by default
-    # time in microseconds (1000 milliseconds)
+class CL_Influx(CL_Database):
     _influxClient = influxdb.InfluxDBClient()
     def __init__(self):
         host = 'sandbox.influxdb.com'
@@ -112,16 +114,21 @@ class CLInflux(CLDatabase):
         self._influxClient.write_points(data)
 
     def select_first(self):
+        # ordered desc by default
         self._influxClient.query('select * from danjou order asc limit 1')
 
     def select_last(self):
         self._influxClient.query('select * from danjou limit 1')
 
-    def select_range(self, first, last):
-        self._influxClient.query('select * from json_points where time > '+first+' and time < '+last+'')
+    def select_range(self, start, end):
+        # time in microseconds (1000 milliseconds)
+        start = start*1000
+        end = end*1000
+        start = str(start)
+        end = str(end)
+        self._influxClient.query('select * from json_points where time > '+start+' and time < '+end+'')
        
-class CLTempo(CLDatabase):
-    # some private vars
+class CL_Tempo(CL_Database):
     API_KEY = ''
     DATABASE_ID = ''
     API_SECRET = ''
@@ -149,7 +156,7 @@ class CLTempo(CLDatabase):
             data.append(tempoPt)
 
         # write points out    
-        resp = self._client.write_key(self.SERIES_KEY, data)
+        resp = self._client.write_data(self.SERIES_KEY, data)
 
     def select_first(self):
         self._client.single_value(self.SERIES_KEY, datetime.datetime(1950, 1, 1), 'nearest')
@@ -157,22 +164,13 @@ class CLTempo(CLDatabase):
     def select_last(self):
         self._client.single_value(self.SERIES_KEY, datetime.datetime(2050, 1, 1), 'nearest')
 
-    def select_range(self, first, last):
-        # time format ISO 8601
-        self._client.read_data(self.SERIES_KEY, first, last)
-
-
-class StopWatch(object):
-    _start = 0
-    _elapsed = 0
-    def start(self):
-        self._start = time.time()
-    def stop(self):
-        self._elapsed = time.time() - self._start
-    def display(self):
-        return self._elapsed
-# we aren't using this class
-# we are using the python timeit module
+    def select_range(self, start, end):
+        ## convert from timestamp to ISO 8601
+        start = datetime.datetime.utcfromtimestamp(start)
+        #start = date1.isoformat() + 'Z'
+        end = datetime.datetime.utcfromtimestamp(end)
+        #end = date2.isoformat() + 'Z'
+        self._client.read_data(self.SERIES_KEY, start, end)
 
 ########################
 ####  TESTING CODE  ####
@@ -180,48 +178,39 @@ class StopWatch(object):
         
 points = []
 i=0
-
 theDate = datetime.datetime(2014,1, 1)
-
 for i in range(100):
     timestamp = (theDate - datetime.datetime(1970, 1, 1)).total_seconds()
     points.append(Point(timestamp, random.randint(1,100)))
     theDate = theDate + datetime.timedelta(minutes=5)
 
-sqlite = CLSQLite()
-sqlite.insert_range(points)
+start = 1388535600
+end = 1388537100
+databases = ['CL_SQLite', 'CL_Influx', 'CL_Tempo']
+for db in databases:
+    db_name = db
 
+    setup_str = "from __main__ import " + db_name + ", points, start, end; dbObj = " + db_name + "()"
 
-cmdArray = []
-# classDefName
-cmdArray.append("CLSQLite")
-cmdArray.append("CLTempo")
-cmdArray.append("CLInflux")
+    sel_str = "dbObj.insert_range(points)"
+    insert_time = timeit.timeit(sel_str, setup_str, number=1)
 
-for theCmd in cmdArray:
-    setupStr = "from __main__ import " + theCmd + "; dbObj = " + theCmd + "()"
-    selStr = "dbObj.select_last()"
-    timeElapsed = timeit.timeit(selStr, setupStr, number=1)
-    print ("elapsed:: " + theCmd + " :: " + str(timeElapsed))
+    sel_str = "dbObj.select_first()"
+    sel_first_time = timeit.timeit(sel_str, setup_str, number=1)
 
-    
-"""
-influx = CLInflux()
-#influx.insert_range(points)
+    sel_str = "dbObj.select_last()"
+    sel_last_time = timeit.timeit(sel_str, setup_str, number=1)
 
-tempo = CLTempo()
-#tempo.insert_range(points)
+    sel_str = "dbObj.select_range(start, end)"
+    sel_range_time = timeit.timeit(sel_str, setup_str, number=1)
 
-# utc timestamp
-first = '1388535600'
-last = '1388537100'
+    results = OrderedDict()
+    results['db_name'] = 'CL_SQLite'
+    results['insert_time'] = insert_time
+    results['sel_first_time'] = sel_first_time
+    results['sel_last_time'] = sel_last_time
+    results['sel_range_time'] = sel_range_time
 
-# ISO 8601
-start = '2014-01-01T00:00:00Z'
-end = '2014-01-01T03:00:00Z'
-
-tic = time.time()
-tempo.select_range(start, end)
-toc = time.time()
-print(toc-tic)
-"""
+    print("Results Object: "+db_name+"\n")
+    print(results)
+    print("\n\n")
