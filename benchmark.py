@@ -6,24 +6,21 @@ use with python 2.7, and tempodb v1.0 library
 
 """
 
-
 import os, sys
 import time, datetime
-
 import random
+import timeit
+from collections import OrderedDict
+import tabulate
 
 import sqlite3
 
-from influxdb import client as _influxClient
 import influxdb
+from influxdb import client as _influxClient
 
 import tempodb
 from tempodb import client
 from tempodb.protocol import DataPoint
-
-import timeit
-
-from collections import OrderedDict
 
 class Point:
     time = 0
@@ -208,15 +205,15 @@ for i in calendar_units:
 # now we have 6 lists:
 #   week/month/year + 5min/1hr
 
-list_of_data = [week[0], week[1], month[0], month[1], year[0], year[1]]
 start = 1388535600
 end = 1388537100
+table = []
+list_of_data = [week[0], week[1], month[0], month[1], year[1]]
+#data_names = ['week_5min', 'week_1hr', 'month_5min', 'month_1hr', 'year_1hr']
 databases = ['CL_SQLite', 'CL_Influx', 'CL_Tempo']
 for db in databases:
-    for data in list_of_data:   
-        db_name = db
-
-        setup_str = "from __main__ import "+db_name+", data, start, end; dbObj = "+db_name+"()"
+    for data in list_of_data:
+        setup_str = "from __main__ import "+db+", data, start, end; dbObj = "+db+"()"
 
         sel_str = "dbObj.insert_range(data)"
         insert_time = timeit.timeit(sel_str, setup_str, number=1)
@@ -230,18 +227,13 @@ for db in databases:
         sel_str = "dbObj.select_range(start, end)"
         sel_range_time = timeit.timeit(sel_str, setup_str, number=1)
 
-        results = OrderedDict()
-        results['db_name'] = 'CL_SQLite'
-        results['insert_time'] = insert_time
-        results['sel_first_time'] = sel_first_time
-        results['sel_last_time'] = sel_last_time
-        results['sel_range_time'] = sel_range_time
+        num_pts = len(data)
 
-        print("Results Object: "+db_name+"\n")
-        print(results)
-        print("\n\n")
-    print("--------------------------------------")
-    print("\n")
+        row = [db, num_pts, insert_time, sel_first_time, sel_last_time, sel_range_time]
+        table.append(row)
+
+headers = ["DB Name", "# of Pts","Insert", "Sel First", "Sel Last", "Sel Range"]
+print(tabulate.tabulate(table, headers=headers, tablefmt="rst"))
     
 # with tempo trial you are limited by the number of points you can insert
 # at one time.  it's between 8,760 and 105,120.
