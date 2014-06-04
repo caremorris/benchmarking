@@ -12,6 +12,7 @@ import random
 import timeit
 from collections import OrderedDict
 import tabulate
+import csv
 
 import sqlite3
 
@@ -73,7 +74,7 @@ class CL_SQLite(CL_Database):
         conn = sqlite3.connect("grapes.db")
         c = conn.cursor()
         c.execute('''SELECT * FROM points ORDER BY time DESC LIMIT 1''')
-
+        
         conn.commit()
         conn.close()
 
@@ -94,8 +95,12 @@ class CL_Influx(CL_Database):
         port = 8086
         username = 'cl_testing'
         password = 'pass123'
-        dbname = 'pineapple'
-        self._influxClient = influxdb.InfluxDBClient(host, port, username, password, dbname)     
+        dbname = 'peaches'
+        self._influxClient = influxdb.InfluxDBClient(host, port, username, password, dbname)
+
+        # delete series if it's already there
+        self._influxClient.query('drop series melon')
+        # this removes all data from the series and removes it from the list of series in the db
         
     def insert_range(self, points_array):
         json_points = []
@@ -105,25 +110,23 @@ class CL_Influx(CL_Database):
         data = [{
                 "points": json_points,
                 "columns" : ["time", "value"],
-                "name" : "danjou"
+                "name" : "melon"
                 }]
             
         self._influxClient.write_points(data)
 
     def select_first(self):
         # ordered desc by default
-        self._influxClient.query('select * from danjou order asc limit 1')
+        self._influxClient.query('select * from melon order asc limit 1')
 
     def select_last(self):
-        self._influxClient.query('select * from danjou limit 1')
+        self._influxClient.query('select * from melon limit 1')
 
     def select_range(self, start, end):
-        # time in microseconds (1000 milliseconds)
-        start = start*1000
-        end = end*1000
-        start = str(start)
-        end = str(end)
-        self._influxClient.query('select * from json_points where time > '+start+' and time < '+end+'')
+        # time in epoch time + suffix (or nanoseconds + no suffix)
+        start = str(start)+'s'
+        end = str(end)+'s'
+        self._influxClient.query('select * from melon where time > '+start+' and time < '+end+'')
        
 class CL_Tempo(CL_Database):
     API_KEY = ''
@@ -153,10 +156,11 @@ class CL_Tempo(CL_Database):
             data.append(tempoPt)
 
         # write points out    
-        resp = self._client.write_data(self.SERIES_KEY, data)
+        self._client.write_data(self.SERIES_KEY, data)
 
     def select_first(self):
         self._client.single_value(self.SERIES_KEY, datetime.datetime(1950, 1, 1), 'nearest')
+
         
     def select_last(self):
         self._client.single_value(self.SERIES_KEY, datetime.datetime(2050, 1, 1), 'nearest')
@@ -166,11 +170,13 @@ class CL_Tempo(CL_Database):
         start = datetime.datetime.utcfromtimestamp(start)
         end = datetime.datetime.utcfromtimestamp(end)
         self._client.read_data(self.SERIES_KEY, start, end)
+        
 
 ########################
 ####  TESTING CODE  ####
 ########################
-        
+
+
 week = [[], []]
 month = [[], []]
 year = [[], []]
@@ -205,11 +211,10 @@ for i in calendar_units:
 # now we have 6 lists:
 #   week/month/year + 5min/1hr
 
-start = 1388535600
-end = 1388537100
+start = 1388535000
+end = 1388535000 + 300*5
 table = []
 list_of_data = [week[0], week[1], month[0], month[1], year[1]]
-#data_names = ['week_5min', 'week_1hr', 'month_5min', 'month_1hr', 'year_1hr']
 databases = ['CL_SQLite', 'CL_Influx', 'CL_Tempo']
 for db in databases:
     for data in list_of_data:
@@ -229,11 +234,22 @@ for db in databases:
 
         num_pts = len(data)
 
-        row = [db, num_pts, insert_time, sel_first_time, sel_last_time, sel_range_time]
+        # deleted 'db' from first spot in 'row' array for csv
+        row = [num_pts, insert_time, sel_first_time, sel_last_time, sel_range_time]
         table.append(row)
+        
+    # export table as a csv
+    with open('/Users/carolyn/'+db+'.csv', 'w') as f:
+        w = csv.writer(f, delimiter=',',)
+        w.writerow(['points', 'insert', 'first', 'last', 'range'])
+        for i in table:
+            w.writerow(i)
 
-headers = ["DB Name", "# of Pts","Insert", "Sel First", "Sel Last", "Sel Range"]
-print(tabulate.tabulate(table, headers=headers, tablefmt="rst"))
+    table = []
+
+### pretty table ###
+# headers = ["DB Name", "# of Pts","Insert", "Sel First", "Sel Last", "Sel Range"]
+# print(tabulate.tabulate(table, headers=headers, tablefmt="rst"))
     
 # with tempo trial you are limited by the number of points you can insert
 # at one time.  it's between 8,760 and 105,120.
