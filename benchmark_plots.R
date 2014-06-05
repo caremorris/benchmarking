@@ -7,11 +7,18 @@ last <- SQLite[,4]
 range <- SQLite[,5]
 
 plot(points, insert, type='p')
-plot(points, first, type='p')
-plot(points, last, type='p')
-plot(points, range, type='p')
+res = lm(insert~points)
+abline(res)
 
-# line of best fit
+plot(points, first, type='p')
+res = lm(first~points)
+abline(res)
+
+plot(points, last, type='p')
+res = lm(last~points)
+abline(res)
+
+plot(points, range, type='p')
 res = lm(range~points)
 abline(res)
 
@@ -26,12 +33,21 @@ last <- influx[,4]
 range <- influx[,5]
 
 plot(points, insert, type='p')
-plot(points, first, type='p')
-plot(points, last, type='p')
-plot(points, range, type='p')
+res = lm(insert~points)
+abline(res)
 
+plot(points, first, type='p')
+res = lm(first~points)
+abline(res)
+
+plot(points, last, type='p')
+res = lm(last~points)
+abline(res)
+
+plot(points, range, type='p')
 res = lm(range~points)
 abline(res)
+
 
 ################################################
 
@@ -44,10 +60,18 @@ last <- tempo[,4]
 range <- tempo[,5]
 
 plot(points, insert, type='p')
-plot(points, first, type='p')
-plot(points, last, type='p')
-plot(points, range, type='p')
+res = lm(insert~points)
+abline(res)
 
+plot(points, first, type='p')
+res = lm(first~points)
+abline(res)
+
+plot(points, last, type='p')
+res = lm(last~points)
+abline(res)
+
+plot(points, range, type='p')
 res = lm(range~points)
 abline(res)
 
