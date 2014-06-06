@@ -43,6 +43,8 @@ class CL_Database(object):
         print("last")
     def select_range(self, start, end):
         print("not implemented")
+    def insert_safely(self, start, end):
+        print("not implemented")
         
 class CL_SQLite(CL_Database):
     def __init__(self):
@@ -154,13 +156,13 @@ class CL_Tempo(CL_Database):
             pointDateTime = datetime.datetime.utcfromtimestamp(point.time)
             tempoPt = DataPoint.from_data(pointDateTime, point.value)
             data.append(tempoPt)
+        print(data[0:30])
 
         # write points out    
         self._client.write_data(self.SERIES_KEY, data)
 
     def select_first(self):
         self._client.single_value(self.SERIES_KEY, datetime.datetime(1950, 1, 1), 'nearest')
-
         
     def select_last(self):
         self._client.single_value(self.SERIES_KEY, datetime.datetime(2050, 1, 1), 'nearest')
@@ -170,12 +172,11 @@ class CL_Tempo(CL_Database):
         start = datetime.datetime.utcfromtimestamp(start)
         end = datetime.datetime.utcfromtimestamp(end)
         self._client.read_data(self.SERIES_KEY, start, end)
-        
+
 
 ########################
 ####  TESTING CODE  ####
 ########################
-
 
 week = [[], []]
 month = [[], []]
@@ -211,6 +212,19 @@ for i in calendar_units:
 # now we have 6 lists:
 #   week/month/year + 5min/1hr
 
+mydata = year[0]
+
+test = 26942
+half = test/2
+mydata_short = mydata[0:test]
+short_1 = mydata_short[0:half]
+short_2 = mydata_short[half:]
+
+tempo = CL_Tempo()
+tempo.insert_range(short_1)
+print("Done!")
+
+'''
 start = 1388535000
 end = 1388535000 + 300*5
 table = []
@@ -246,10 +260,10 @@ for db in databases:
             w.writerow(i)
 
     table = []
-
+'''
 ### pretty table ###
 # headers = ["DB Name", "# of Pts","Insert", "Sel First", "Sel Last", "Sel Range"]
 # print(tabulate.tabulate(table, headers=headers, tablefmt="rst"))
     
 # with tempo trial you are limited by the number of points you can insert
-# at one time.  it's between 8,760 and 105,120.
+# at one time.  it's 26,942.
