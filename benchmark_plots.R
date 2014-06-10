@@ -74,4 +74,3 @@ abline(res)
 plot(points, range, type='p')
 res = lm(range~points)
 abline(res)
-

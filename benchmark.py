@@ -43,6 +43,8 @@ class CL_Database(object):
         print("last")
     def select_range(self, start, end):
         print("not implemented")
+    def insert_safely(self, start, end):
+        print("not implemented")
         
 class CL_SQLite(CL_Database):
     def __init__(self):
@@ -155,12 +157,19 @@ class CL_Tempo(CL_Database):
             tempoPt = DataPoint.from_data(pointDateTime, point.value)
             data.append(tempoPt)
 
-        # write points out    
-        self._client.write_data(self.SERIES_KEY, data)
+        # split data into chunks of 100 points
+        for i in range(0, len(data), 100):
+            chunk = data[i:i+100]
+            # write points out
+            self._client.write_data(self.SERIES_KEY, chunk)
+
+        # if len(data) is not a multiple of 100, we have some points left over
+        r = len(data)%100
+        last_chunk = data[-r:]
+        self._client.write_data(self.SERIES_KEY, chunk)
 
     def select_first(self):
         self._client.single_value(self.SERIES_KEY, datetime.datetime(1950, 1, 1), 'nearest')
-
         
     def select_last(self):
         self._client.single_value(self.SERIES_KEY, datetime.datetime(2050, 1, 1), 'nearest')
@@ -170,12 +179,11 @@ class CL_Tempo(CL_Database):
         start = datetime.datetime.utcfromtimestamp(start)
         end = datetime.datetime.utcfromtimestamp(end)
         self._client.read_data(self.SERIES_KEY, start, end)
-        
+
 
 ########################
 ####  TESTING CODE  ####
 ########################
-
 
 week = [[], []]
 month = [[], []]
@@ -208,13 +216,13 @@ for i in calendar_units:
         i[1].append(Point(timestamp, random.randint(1,100)))
         date2 = date2 + datetime.timedelta(minutes=60)
 
-# now we have 6 lists:
-#   week/month/year + 5min/1hr
+# now we have 6 lists: week/month/year + 5min/1hr
+
 
 start = 1388535000
 end = 1388535000 + 300*5
 table = []
-list_of_data = [week[0], week[1], month[0], month[1], year[1]]
+list_of_data = [week[0], week[1], month[0], month[1], year[1], year[0]]
 databases = ['CL_SQLite', 'CL_Influx', 'CL_Tempo']
 for db in databases:
     for data in list_of_data:
@@ -244,12 +252,15 @@ for db in databases:
         w.writerow(['points', 'insert', 'first', 'last', 'range'])
         for i in table:
             w.writerow(i)
-
+            
     table = []
+    print(db+": check")
+
+print("mission accomplished")
 
 ### pretty table ###
 # headers = ["DB Name", "# of Pts","Insert", "Sel First", "Sel Last", "Sel Range"]
 # print(tabulate.tabulate(table, headers=headers, tablefmt="rst"))
     
 # with tempo trial you are limited by the number of points you can insert
-# at one time.  it's between 8,760 and 105,120.
+# at one time.  it's 26,942.
