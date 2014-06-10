@@ -43,8 +43,6 @@ class CL_Database(object):
         print("last")
     def select_range(self, start, end):
         print("not implemented")
-    def insert_safely(self, start, end):
-        print("not implemented")
         
 class CL_SQLite(CL_Database):
     def __init__(self):
@@ -255,8 +253,6 @@ for db in databases:
             
     table = []
     print(db+": check")
-
-print("mission accomplished")
 
 ### pretty table ###
 # headers = ["DB Name", "# of Pts","Insert", "Sel First", "Sel Last", "Sel Range"]
