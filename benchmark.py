@@ -13,15 +13,13 @@ import timeit
 from collections import OrderedDict
 import tabulate
 import csv
-
 import sqlite3
-
 import influxdb
 from influxdb import client as _influxClient
-
 import tempodb
 from tempodb import client
 from tempodb.protocol import DataPoint
+import xively
 
 class Point:
     time = 0
@@ -137,9 +135,9 @@ class CL_Tempo(CL_Database):
     
     def __init__(self):
         # get api key, secret, connect to tempo server, create series
-        self.API_KEY = '70cedcd39a304c30a61607e994d8a1b1'
-        self.API_SECRET = 'df900c9bb67a4fffa9127c548599f7e6'
-        self.DATABASE_ID = 'fruit'
+        self.API_KEY = '3f88a674a3a94dc7b08ac07858c5c8fe'
+        self.API_SECRET = 'c36ea269d1494a77ba1550794f7169f0'
+        self.DATABASE_ID = 'CLPOINTS'
         self.SERIES_KEY = 'apple'
         self._client = tempodb.client.Client(self.DATABASE_ID, self.API_KEY, self.API_SECRET)
         # delete series if it's already there.
@@ -154,13 +152,11 @@ class CL_Tempo(CL_Database):
             pointDateTime = datetime.datetime.utcfromtimestamp(point.time)
             tempoPt = DataPoint.from_data(pointDateTime, point.value)
             data.append(tempoPt)
-
         # split data into chunks of 100 points
         for i in range(0, len(data), 100):
             chunk = data[i:i+100]
             # write points out
             self._client.write_data(self.SERIES_KEY, chunk)
-
         # if len(data) is not a multiple of 100, we have some points left over
         r = len(data)%100
         last_chunk = data[-r:]
@@ -178,10 +174,41 @@ class CL_Tempo(CL_Database):
         end = datetime.datetime.utcfromtimestamp(end)
         self._client.read_data(self.SERIES_KEY, start, end)
 
-
+class CL_Xively(CL_Database):
+    api=None
+    feed=None
+    datastream=None
+    def __init__(self):
+        self.api = xively.XivelyAPIClient("kWBAwJLxWde90LutdSTue1W6sKEyFyFNh6KTH3sjK9ce162W")
+        self.feed = self.api.feeds.get(1128532470)
+        self.datastream = self.feed.datastreams.get("fruit")
+    def insert_range(self, points_array):
+        step_size = 1000 # Xively's maximum 1000 data-point per request requirement
+        for i in range(0, len(points_array), step_size):
+            datapts = []
+            for point in points_array[i:i+step_size]:
+                time = datetime.datetime.utcfromtimestamp(point.time)
+                xive_point = xively.Datapoint(at=str(time), value=point.value)
+                datapts.append(xive_point)
+            self.datastream.datapoints = datapts
+            self.datastream.update()
+        print("inserted")
+    def select_first(self):
+        datapoint = self.datastream.datapoints.get(at=datetime.datetime.utcfromtimestamp(1388535000))
+        # we can do datapoint.value, datapoint.time
+    def select_last(self):
+        print("selected last")
+    def select_range(self, startTime, endTime):
+        s = datetime.datetime.utcfromtimestamp(startTime)
+        e = datetime.datetime.utcfromtimestamp(endTime)
+        datapoints = self.datastream.datapoints.history(start = s, end = e)  # fetch and return a list of datapoints
+        for i in datapoints:
+            print(i)
+            
 ########################
 ####  TESTING CODE  ####
 ########################
+
 
 week = [[], []]
 month = [[], []]
@@ -191,7 +218,7 @@ for i in calendar_units:
     yyyy = 2014
     mm = 1
     dd = 1
-    date1 = date2 = datetime.datetime(yyyy, mm, dd)
+    date1 = date2 = datetime.datetime(yyyy, mm, dd) # date1 for 5 minute intervals, date2 for 1 hour intervals
     if i == week:
         dd = dd + 7
     elif i == month:
@@ -202,26 +229,41 @@ for i in calendar_units:
             yyyy = yyyy + 1
     else:
         yyyy = yyyy + 1
-    next_date = datetime.datetime(yyyy, mm, dd)
-    
+    next_date = datetime.datetime(yyyy, mm, dd) # either 1 week, 1 month, or 1 year into future
     while date1 < next_date:
-        timestamp = (date1 - datetime.datetime(1970, 1, 1)).total_seconds()
-        i[0].append(Point(timestamp, random.randint(1,100)))
-        date1 = date1 + datetime.timedelta(minutes=5)
-        
+        timestamp = (date1 - datetime.datetime(1970, 1, 1)).total_seconds() 
+        i[0].append(Point(timestamp, random.randint(1,100))) # append Point to week/month/year[0]
+        date1 = date1 + datetime.timedelta(minutes=5) # change date1 // 5 minute intervals
     while date2 < next_date:
         timestamp = (date2 - datetime.datetime(1970, 1, 1)).total_seconds()
-        i[1].append(Point(timestamp, random.randint(1,100)))
-        date2 = date2 + datetime.timedelta(minutes=60)
+        i[1].append(Point(timestamp, random.randint(1,100))) # append Point to week/month/year[1]
+        date2 = date2 + datetime.timedelta(minutes=60) # change date2 // 1 hour intervals
 
-# now we have 6 lists: week/month/year + 5min/1hr
+pt1 = week[0][0] #1388534400.0
+pt2 = week[0][5] #1388535900.0
 
+# pt2.time - pt1.time = 1500
 
+hr = 3600
+day = 86400
+wk = 604800
+mo = 2629743
+yr = 31556926 
+
+pt0 = pt1.time - mo
+# can go back in time one week + six days
+# when going back in time over two weeks: "HTTPError: 403 Client Error: Forbidden"
+# 
+
+xive = CL_Xively()
+xive.select_range(pt0, pt2.time - mo)
+
+   
 start = 1388535000
 end = 1388535000 + 300*5
 table = []
 list_of_data = [week[0], week[1], month[0], month[1], year[1], year[0]]
-databases = ['CL_SQLite', 'CL_Influx', 'CL_Tempo']
+databases = ['CL_SQLite', 'CL_Influx', 'CL_Tempo', 'CL_Xivley']
 for db in databases:
     for data in list_of_data:
         setup_str = "from __main__ import "+db+", data, start, end; dbObj = "+db+"()"
@@ -252,11 +294,11 @@ for db in databases:
             w.writerow(i)
             
     table = []
-    print(db+": check")
+    print(db + ": check")
 
 ### pretty table ###
-# headers = ["DB Name", "# of Pts","Insert", "Sel First", "Sel Last", "Sel Range"]
-# print(tabulate.tabulate(table, headers=headers, tablefmt="rst"))
+headers = ["DB Name", "# of Pts","Insert", "Sel First", "Sel Last", "Sel Range"]
+print(tabulate.tabulate(table, headers=headers, tablefmt="rst"))
     
 # with tempo trial you are limited by the number of points you can insert
 # at one time.  it's 26,942.
